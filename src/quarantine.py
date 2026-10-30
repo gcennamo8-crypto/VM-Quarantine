@@ -4,9 +4,13 @@ import json
 from pathlib import Path
 
 import openstack
+from config_loader import load_config
 
 VM_NAME = "vm-test-quarantena"
-QUARANTINE_GROUP = "quarantine-sg"
+
+CONFIG = load_config()
+QUARANTINE_GROUP = CONFIG["quarantine"]["security_group"]
+
 
 BACKUP_FILE = Path.home() / ".vm-quarantine-backup.json"
 
@@ -49,9 +53,47 @@ def show_status(conn):
         print(f"\nPorta: {port.id}")
         print(f"Security Groups: {port.security_group_ids}")
 
+def validate_quarantine_group(conn, group):
+    config = CONFIG["quarantine"]
+    policy = config["policy"]
+
+    rules = list(
+        conn.network.security_group_rules(
+            security_group_id=group.id
+        )
+    )
+
+    print("\n[CONTROLLO SECURITY GROUP]")
+
+    if policy["ingress"] == "deny":
+        ingress_rules = [
+            rule for rule in rules
+            if rule.direction == "ingress"
+        ]
+
+        if ingress_rules:
+            raise RuntimeError(
+                "Il Security Group contiene regole Ingress non autorizzate"
+            )
+
+    if policy["egress"] == "deny":
+        egress_rules = [
+            rule for rule in rules
+            if rule.direction == "egress"
+        ]
+
+        if egress_rules:
+            raise RuntimeError(
+                "Il Security Group contiene regole Egress non autorizzate"
+            )
+
+    print("Security Group verificato: nessuna regola non autorizzata")
+
 
 def quarantine(conn, dry_run=False):
     vm, group, ports = get_resources(conn)
+
+    validate_quarantine_group(conn, group)
 
     if BACKUP_FILE.exists():
         raise RuntimeError(

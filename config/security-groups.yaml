@@ -1,0 +1,16 @@
+
+quarantine:
+  security_group: quarantine-sg
+
+  policy:
+    ingress: deny
+    egress: deny
+
+  administrative_access:
+    ssh_enabled: false
+    access_method: horizon_console
+
+  detection:
+    protocol: icmp
+    threshold: 20
+    window_seconds: 10
