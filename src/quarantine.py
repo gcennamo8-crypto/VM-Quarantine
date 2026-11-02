@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 import openstack
+from logger import setup_logger
 from config_loader import load_config
 
 VM_NAME = "vm-test-quarantena"
@@ -144,6 +145,11 @@ def quarantine(conn, dry_run=False):
 
     print("\nQuarantena applicata.")
 
+    setup_logger().info(
+        f"Quarantena applicata | VM: {vm.name} | "
+        f"Security Group: {group.name}"
+    )
+
 
 def restore(conn, dry_run=False):
     if not BACKUP_FILE.exists():
@@ -178,6 +184,9 @@ def restore(conn, dry_run=False):
     BACKUP_FILE.unlink()
     print("\nConfigurazione originale ripristinata.")
 
+    setup_logger().info(
+        f"Configurazione originale ripristinata | VM: {vm.name}"
+    )
 
 def main():
     parser = argparse.ArgumentParser(
