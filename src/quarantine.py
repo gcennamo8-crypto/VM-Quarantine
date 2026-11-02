@@ -12,7 +12,7 @@ CONFIG = load_config()
 QUARANTINE_GROUP = CONFIG["quarantine"]["security_group"]
 
 
-BACKUP_FILE = Path.home() / ".vm-quarantine-backup.json"
+BACKUP_FILE = Path("/var/lib/vm-quarantine/backup.json")
 
 
 def connect():
