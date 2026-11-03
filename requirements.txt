@@ -1,0 +1,4 @@
+openstacksdk
+scapy
+PyYAML
+apprise==2.1.0
