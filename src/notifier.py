@@ -1,9 +1,43 @@
 
-import json
-import socket
+import os
 from datetime import datetime
+from pathlib import Path
+from urllib.parse import quote
 
-SOCKET_PATH = "/run/vm-quarantine-notifications/notify.sock"
+import apprise
+
+
+def load_email_config():
+    """Legge le credenziali dal file privato."""
+    config = {}
+
+    import pwd
+
+    username = os.environ.get("SUDO_USER")
+
+    if username:
+        home = Path(pwd.getpwnam(username).pw_dir)
+    else:
+        home = Path.home()
+
+    path = home / ".config/vm-quarantine/email.env"
+    if not path.is_file():
+        return config
+
+    import shlex
+
+    for line in path.read_text().splitlines():
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue
+
+        key, separator, value = line.partition("=")
+
+        if separator:
+            values = shlex.split(value)
+            if len(values) == 1:
+                config[key.strip()] = values[0]
+
+    return config
 
 
 def send_notification(event, vm_name, message):
@@ -21,39 +55,54 @@ def send_notification(event, vm_name, message):
 
     print(notification)
 
-    payload = {
-        "event": event,
-        "vm_name": vm_name,
-        "message": message
-    }
-
     try:
-        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
-            client.settimeout(5)
-            client.connect(SOCKET_PATH)
-            client.sendall(json.dumps(payload).encode("utf-8"))
+        config = load_email_config()
 
-            response = client.recv(4096)
-            if not response:
-                raise ConnectionError("Nessuna risposta dal server")
+        email = config.get("GMAIL_ADDRESS")
+        password = config.get("GMAIL_APP_PASSWORD")
+        recipient = config.get("NOTIFY_EMAIL")
 
-            result = json.loads(response.decode("utf-8"))
+        if not all((email, password, recipient)):
+            print("[EMAIL] Configurazione Gmail mancante.")
+            return notification
 
-            if result.get("emails_processed") == 1:
-                print("[EMAIL] Notifica elaborata da Horizon.")
-            else:
-                print("[EMAIL] Il server non ha confermato l'invio.")
+        username, domain = email.rsplit("@", 1)
 
-    except (OSError, ValueError, UnicodeError) as error:
-        print(f"[EMAIL] Notifica remota non disponibile: {error}")
+        url = (
+            f"mailto://{quote(username, safe='')}:"
+            f"{quote(password, safe='')}"
+            f"@{domain}/{quote(recipient, safe='')}"
+        )
+
+        notifier = apprise.Apprise()
+
+        if not notifier.add(url):
+            print("[EMAIL] Configurazione Apprise non valida.")
+            return notification
+
+        sent = notifier.notify(
+            title=f"VM Quarantine - {event}",
+            body=notification
+        )
+
+        if sent:
+            print("[EMAIL] Invio riuscito.")
+        else:
+            print("[EMAIL] Invio fallito.")
+
+    except Exception as error:
+        print(
+            f"[EMAIL] Errore durante la notifica: "
+            f"{type(error).__name__}"
+        )
 
     return notification
 
 
 if __name__ == "__main__":
     send_notification(
-        event="QUARANTINE_APPLIED",
+        event="TEST_NOTIFICATION",
         vm_name="vm-test-quarantena",
-        message="TEST: collegamento notifiche a Horizon."
+        message="Test delle notifiche automatiche con Apprise."
     )
 
