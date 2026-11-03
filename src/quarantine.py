@@ -4,6 +4,8 @@ import json
 from pathlib import Path
 
 import openstack
+from logger import setup_logger
+from notifier import send_notification
 from config_loader import load_config
 
 VM_NAME = "vm-test-quarantena"
@@ -144,10 +146,23 @@ def quarantine(conn, dry_run=False):
 
     print("\nQuarantena applicata.")
 
+    setup_logger().info(
+        f"Quarantena applicata | VM: {vm.name} | "
+        f"Security Group: {group.name}"
+    )
+
+    send_notification(
+        event="QUARANTINE_APPLIED",
+        vm_name=vm.name,
+        message=f"VM isolata tramite Security Group {group.name}."
+    )
+
+
 
 def restore(conn, dry_run=False):
     if not BACKUP_FILE.exists():
         raise RuntimeError("Backup non disponibile")
+
 
     vm, group, ports = get_resources(conn)
     backup = json.loads(BACKUP_FILE.read_text())
@@ -177,6 +192,16 @@ def restore(conn, dry_run=False):
 
     BACKUP_FILE.unlink()
     print("\nConfigurazione originale ripristinata.")
+
+    setup_logger().info(
+        f"Configurazione originale ripristinata | VM: {vm.name}"
+    )
+
+    send_notification(
+        event="QUARANTINE_RESTORED",
+        vm_name=vm.name,
+        message="Security Group originale ripristinato correttamente."
+    )
 
 
 def main():

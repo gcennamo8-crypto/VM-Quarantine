@@ -6,6 +6,7 @@ from collections import deque
 from scapy.all import sniff, IP, ICMP
 
 from config_loader import load_config
+from logger import setup_logger
 from quarantine import connect, quarantine
 
 CONFIG = load_config()["quarantine"]["detection"]
@@ -17,6 +18,7 @@ VM_IP = "10.0.0.8"
 INTERFACE = "tap25f97fea-45"
 
 timestamps = deque()
+log = setup_logger()
 alert_triggered = False
 APPLY_QUARANTINE = False
 
@@ -48,6 +50,11 @@ def process_packet(packet):
     if count > THRESHOLD and not alert_triggered:
         alert_triggered = True
         print(f"[ALERT] Soglia superata: {count} > {THRESHOLD}")
+        log.warning(
+            f"Soglia ICMP superata | VM: {VM_IP} | "
+            f"Pacchetti: {count} | Soglia: {THRESHOLD} | "
+            f"Finestra: {WINDOW}s"
+        )
 
         try:
             conn = connect()
