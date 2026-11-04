@@ -8,14 +8,17 @@ from logger import setup_logger
 from notifier import send_notification
 from config_loader import load_config
 
-VM_NAME = "vm-test-quarantena"
+DEFAULT_VM_NAME = "vm-test-quarantena"
 
 CONFIG = load_config()
 QUARANTINE_GROUP = CONFIG["quarantine"]["security_group"]
 
 
-BACKUP_FILE = Path("/var/lib/vm-quarantine/backup.json")
+BACKUP_DIR = Path("/var/lib/vm-quarantine")
 
+
+def get_backup_file(vm_id):
+    return BACKUP_DIR / f"{vm_id}.json"
 
 def connect():
     conn = openstack.connect()
@@ -23,8 +26,8 @@ def connect():
     return conn
 
 
-def get_resources(conn):
-    vm = conn.compute.find_server(VM_NAME)
+def get_resources(conn, vm_identifier):
+    vm = conn.compute.find_server(vm_identifier)
 
     if vm is None:
         raise RuntimeError("VM non trovata")
@@ -44,9 +47,8 @@ def get_resources(conn):
     return vm, group, ports
 
 
-def show_status(conn):
-    vm, group, ports = get_resources(conn)
-
+def show_status(conn, vm_identifier):
+    vm, group, ports = get_resources(conn, vm_identifier)
     print(f"VM: {vm.name}")
     print(f"Stato: {vm.status}")
     print(f"Security Group quarantena: {group.name}")
@@ -92,12 +94,13 @@ def validate_quarantine_group(conn, group):
     print("Security Group verificato: nessuna regola non autorizzata")
 
 
-def quarantine(conn, dry_run=False):
-    vm, group, ports = get_resources(conn)
+def quarantine(conn, vm_identifier, dry_run=False):
+    vm, group, ports = get_resources(conn, vm_identifier)
 
     validate_quarantine_group(conn, group)
+    backup_file = get_backup_file(vm.id)
 
-    if BACKUP_FILE.exists():
+    if backup_file.exists():
         raise RuntimeError(
             "Esiste già un backup. "
             "Ripristina prima di applicare una nuova quarantena."
@@ -132,17 +135,30 @@ def quarantine(conn, dry_run=False):
         print("\n[DRY RUN] Nessuna modifica effettuata.")
         return
 
-    with BACKUP_FILE.open("x") as file:
+    with backup_file.open("x") as file:
         json.dump(backup, file, indent=2)
 
-    BACKUP_FILE.chmod(0o600)
+    backup_file.chmod(0o600)
 
-    for port in ports:
-        conn.network.update_port(
-            port.id,
-            security_groups=[group.id]
+    try:
+        for port in ports:
+            conn.network.update_port(
+                port.id,
+                security_groups=[group.id]
+            )
+            print(f"Porta {port.id} messa in quarantena")
+
+    except Exception as error:
+        setup_logger().error(
+            f"Errore durante la quarantena | "
+            f"VM: {vm.name} | Errore: {error}"
         )
-        print(f"Porta {port.id} messa in quarantena")
+
+        raise RuntimeError(
+            f"Quarantena non completata per {vm.name}. "
+            f"Verificare lo stato delle porte Neutron. "
+            f"Backup conservato in {backup_file}"
+        ) from error
 
     print("\nQuarantena applicata.")
 
@@ -159,13 +175,17 @@ def quarantine(conn, dry_run=False):
 
 
 
-def restore(conn, dry_run=False):
-    if not BACKUP_FILE.exists():
-        raise RuntimeError("Backup non disponibile")
 
+def restore(conn, vm_identifier, dry_run=False):
+    vm, group, ports = get_resources(conn, vm_identifier)
+    backup_file = get_backup_file(vm.id)
 
-    vm, group, ports = get_resources(conn)
-    backup = json.loads(BACKUP_FILE.read_text())
+    if not backup_file.exists():
+        raise RuntimeError(
+            f"Backup non disponibile per la VM {vm.name}"
+        )
+
+    backup = json.loads(backup_file.read_text())
 
     if backup["vm_id"] != vm.id:
         raise RuntimeError("Il backup appartiene a un'altra VM")
@@ -190,7 +210,7 @@ def restore(conn, dry_run=False):
         print("\n[DRY RUN] Nessuna modifica effettuata.")
         return
 
-    BACKUP_FILE.unlink()
+    backup_file.unlink()
     print("\nConfigurazione originale ripristinata.")
 
     setup_logger().info(
@@ -210,6 +230,12 @@ def main():
     )
 
     parser.add_argument(
+        "--vm",
+        default=DEFAULT_VM_NAME,
+        help="Nome o UUID della macchina virtuale OpenStack"
+    )
+
+    parser.add_argument(
         "action",
         choices=["status", "quarantine", "restore"]
     )
@@ -224,14 +250,14 @@ def main():
     conn = connect()
 
     try:
-        if args.action == "status":
-            show_status(conn)
+       if args.action == "status":
+           show_status(conn, args.vm)
 
-        elif args.action == "quarantine":
-            quarantine(conn, args.dry_run)
+       elif args.action == "quarantine":
+           quarantine(conn, args.vm, args.dry_run)
 
-        elif args.action == "restore":
-            restore(conn, args.dry_run)
+       elif args.action == "restore":
+           restore(conn, args.vm, args.dry_run)
 
     except Exception as error:
         print(f"ERRORE: {error}")
