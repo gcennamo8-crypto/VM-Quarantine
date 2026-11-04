@@ -1,0 +1,20 @@
+policies:
+  SSH-01:
+    parameter: pubkeyauthentication
+    expected: "yes"
+    severity: critical
+
+  SSH-02:
+    parameter: passwordauthentication
+    expected: "no"
+    severity: critical
+
+  SSH-02B:
+    parameter: kbdinteractiveauthentication
+    expected: "no"
+    severity: critical
+
+  SSH-03:
+    parameter: permitrootlogin
+    expected: "no"
+    severity: critical
