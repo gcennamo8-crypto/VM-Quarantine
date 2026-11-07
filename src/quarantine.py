@@ -8,6 +8,8 @@ from logger import setup_logger
 from notifier import send_notification
 from config_loader import load_config
 
+import os
+
 DEFAULT_VM_NAME = "vm-test-quarantena"
 
 CONFIG = load_config()
@@ -135,10 +137,16 @@ def quarantine(conn, vm_identifier, dry_run=False):
         print("\n[DRY RUN] Nessuna modifica effettuata.")
         return
 
-    with backup_file.open("x") as file:
-        json.dump(backup, file, indent=2)
+    fd = os.open(
+        backup_file,
+        os.O_WRONLY | os.O_CREAT | os.O_EXCL,
+        0o600
+    )
 
-    backup_file.chmod(0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as file:
+        json.dump(backup, file, indent=2)
+        file.flush()
+        os.fsync(file.fileno())
 
     try:
         for port in ports:
@@ -196,19 +204,41 @@ def restore(conn, vm_identifier, dry_run=False):
     if port_ids != backup_ids:
         raise RuntimeError("Le porte della VM sono cambiate")
 
-    for port_id, original_groups in backup["ports"].items():
-        print(f"Ripristino porta: {port_id}")
-        print(f"Security Groups originali: {original_groups}")
+    try:
+        for port_id, original_groups in backup["ports"].items():
+            print(f"Ripristino porta: {port_id}")
+            print(f"Security Groups originali: {original_groups}")
 
-        if not dry_run:
-            conn.network.update_port(
-                port_id,
-                security_groups=original_groups
-            )
+            if not dry_run:
+                conn.network.update_port(
+                    port_id,
+                    security_groups=original_groups
+                )
+
+    except Exception as error:
+        setup_logger().error(
+            f"Errore durante il ripristino | "
+            f"VM: {vm.name} | Errore: {error}"
+        )
+
+        raise RuntimeError(
+            f"Ripristino non completato per {vm.name}. "
+            f"Verificare lo stato delle porte Neutron. "
+            f"Backup conservato in {backup_file}"
+        ) from error
 
     if dry_run:
         print("\n[DRY RUN] Nessuna modifica effettuata.")
         return
+
+    for port_id, original_groups in backup["ports"].items():
+        updated_port = conn.network.get_port(port_id)
+
+        if set(updated_port.security_group_ids or []) != set(original_groups):
+            raise RuntimeError(
+                f"Ripristino non verificato per la porta {port_id}. "
+                f"Backup conservato in {backup_file}"
+            )
 
     backup_file.unlink()
     print("\nConfigurazione originale ripristinata.")
