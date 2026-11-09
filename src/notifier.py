@@ -1,4 +1,3 @@
-
 import os
 from datetime import datetime
 from pathlib import Path
@@ -7,35 +6,34 @@ from urllib.parse import quote
 import apprise
 
 
+EMAIL_CONFIG_FILE = (
+    Path.home() / ".config" / "vm-quarantine" / "email.env"
+)
+
+
 def load_email_config():
-    """Legge le credenziali dal file privato."""
     config = {}
 
-    import pwd
-
-    username = os.environ.get("SUDO_USER")
-
-    if username:
-        home = Path(pwd.getpwnam(username).pw_dir)
-    else:
-        home = Path.home()
-
-    path = home / ".config/vm-quarantine/email.env"
-    if not path.is_file():
+    if not EMAIL_CONFIG_FILE.exists():
         return config
 
-    import shlex
+    with EMAIL_CONFIG_FILE.open("r", encoding="utf-8") as file:
+        for line in file:
+            line = line.strip()
 
-    for line in path.read_text().splitlines():
-        if not line.strip() or line.lstrip().startswith("#"):
-            continue
+            if not line or line.startswith("#"):
+                continue
 
-        key, separator, value = line.partition("=")
+            if "=" not in line:
+                continue
 
-        if separator:
-            values = shlex.split(value)
-            if len(values) == 1:
-                config[key.strip()] = values[0]
+            key, value = line.split("=", 1)
+
+            key = key.strip()
+            value = value.strip().strip('"').strip("'")
+
+            if key:
+                config[key] = value
 
     return config
 
@@ -64,7 +62,7 @@ def send_notification(event, vm_name, message):
 
         if not all((email, password, recipient)):
             print("[EMAIL] Configurazione Gmail mancante.")
-            return notification
+            return False
 
         username, domain = email.rsplit("@", 1)
 
@@ -78,31 +76,34 @@ def send_notification(event, vm_name, message):
 
         if not notifier.add(url):
             print("[EMAIL] Configurazione Apprise non valida.")
-            return notification
+            return False
 
         sent = notifier.notify(
             title=f"VM Quarantine - {event}",
-            body=notification
+            body=notification,
         )
 
         if sent:
             print("[EMAIL] Invio riuscito.")
-        else:
-            print("[EMAIL] Invio fallito.")
+            return True
+
+        print("[EMAIL] Invio fallito.")
+        return False
 
     except Exception as error:
         print(
-            f"[EMAIL] Errore durante la notifica: "
+            "[EMAIL] Errore durante la notifica: "
             f"{type(error).__name__}"
         )
-
-    return notification
+        return False
 
 
 if __name__ == "__main__":
-    send_notification(
+    result = send_notification(
         event="TEST_NOTIFICATION",
-        vm_name="vm-test-quarantena",
-        message="Test delle notifiche automatiche con Apprise."
+        vm_name="vm-security-compliance",
+        message="Test del sistema di notifiche VM Quarantine.",
     )
 
+    if not result:
+        raise SystemExit(1)
