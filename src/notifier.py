@@ -1,4 +1,4 @@
-import os
+
 from datetime import datetime
 from pathlib import Path
 from urllib.parse import quote
@@ -6,18 +6,23 @@ from urllib.parse import quote
 import apprise
 
 
-EMAIL_CONFIG_FILE = (
-    Path.home() / ".config" / "vm-quarantine" / "email.env"
+# Percorso unico delle credenziali Gmail.
+# Funziona sia come utente tana sia tramite sudo.
+EMAIL_CONFIG_FILE = Path(
+    "/home/tana/.config/vm-quarantine/email.env"
 )
 
 
 def load_email_config():
     config = {}
 
-    if not EMAIL_CONFIG_FILE.exists():
+    if not EMAIL_CONFIG_FILE.is_file():
         return config
 
-    with EMAIL_CONFIG_FILE.open("r", encoding="utf-8") as file:
+    with EMAIL_CONFIG_FILE.open(
+        "r", encoding="utf-8"
+    ) as file:
+
         for line in file:
             line = line.strip()
 
@@ -64,6 +69,10 @@ def send_notification(event, vm_name, message):
             print("[EMAIL] Configurazione Gmail mancante.")
             return False
 
+        if "@" not in email:
+            print("[EMAIL] Indirizzo Gmail non valido.")
+            return False
+
         username, domain = email.rsplit("@", 1)
 
         url = (
@@ -102,7 +111,10 @@ if __name__ == "__main__":
     result = send_notification(
         event="TEST_NOTIFICATION",
         vm_name="vm-security-compliance",
-        message="Test del sistema di notifiche VM Quarantine.",
+        message=(
+            "Test del sistema di notifiche "
+            "VM Quarantine."
+        ),
     )
 
     if not result:
