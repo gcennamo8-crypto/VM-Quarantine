@@ -12,6 +12,7 @@ from pathlib import Path
 import yaml
 
 import quarantine as quarantine_manager
+from horizon_report import save_horizon_report
 from notifier import send_notification
 from notification_state import (
     STATE_DIR,
@@ -46,7 +47,7 @@ def fetch_report():
         raise ValueError("SSH Agent non disponibile")
 
     command = [
-        "sudo", "-n", "--preserve-env=SSH_AUTH_SOCK",
+        "sudo", "-n",
         "ip", "netns", "exec", NETWORK_NAMESPACE,
         "sudo", "-n", "-u", "tana",
         "env", f"SSH_AUTH_SOCK={ssh_auth_sock}",
@@ -384,6 +385,10 @@ def analyze_report(
     apply_quarantine=False,
 ):
     validate_report(report)
+
+    # Pubblica soltanto report verificati e ottenuti dalla VM.
+    if trusted_source:
+        save_horizon_report(report)
 
     critical_violations = [
         violation

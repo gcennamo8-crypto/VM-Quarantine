@@ -1,0 +1,343 @@
+
+{% extends "base.html" %}
+{% load i18n %}
+
+{% block title %}VM Quarantine{% endblock %}
+
+{% block main %}
+
+<h2>VM Quarantine</h2>
+
+<p>
+    Monitoraggio della conformità delle policy SSH
+    delle macchine virtuali OpenStack.
+</p>
+
+<hr>
+
+<h3>Controllo monitoraggio</h3>
+
+<p>
+    <strong>Stato monitoraggio:</strong>
+    <span id="monitor-status">Caricamento...</span>
+</p>
+
+<form id="monitor-form">
+    {% csrf_token %}
+</form>
+
+<div style="margin: 20px 0;">
+    <button
+        id="start-monitor"
+        type="button"
+        class="btn btn-primary"
+        disabled>
+        Attiva monitoraggio
+    </button>
+
+    <button
+        id="stop-monitor"
+        type="button"
+        class="btn btn-default"
+        disabled>
+        Disattiva monitoraggio
+    </button>
+</div>
+
+<p id="monitor-message" role="status"
+   aria-live="polite"></p>
+
+<hr>
+
+<h3>Risultati Compliance SSH</h3>
+
+<p>
+    <strong>VM:</strong>
+    <span id="vm-name">Non disponibile</span>
+</p>
+
+<p>
+    <strong>Stato compliance:</strong>
+    <span id="compliance-status">Non disponibile</span>
+</p>
+
+<p>
+    <strong>Ultimo controllo:</strong>
+    <span id="last-check">Non disponibile</span>
+</p>
+
+<p id="report-message" role="status"
+   aria-live="polite"></p>
+
+<table class="table table-striped">
+    <thead>
+        <tr>
+            <th>Policy</th>
+            <th>Descrizione</th>
+            <th>Valore richiesto</th>
+            <th>Valore effettivo</th>
+            <th>Stato</th>
+        </tr>
+    </thead>
+
+    <tbody>
+        <tr data-policy="SSH-01">
+            <td>SSH-01</td>
+            <td>Autenticazione con chiave pubblica</td>
+            <td class="expected">—</td>
+            <td class="actual">—</td>
+            <td class="policy-status">Non disponibile</td>
+        </tr>
+
+        <tr data-policy="SSH-02">
+            <td>SSH-02</td>
+            <td>Autenticazione tramite password disabilitata</td>
+            <td class="expected">—</td>
+            <td class="actual">—</td>
+            <td class="policy-status">Non disponibile</td>
+        </tr>
+
+        <tr data-policy="SSH-02B">
+            <td>SSH-02B</td>
+            <td>Keyboard-interactive disabilitata</td>
+            <td class="expected">—</td>
+            <td class="actual">—</td>
+            <td class="policy-status">Non disponibile</td>
+        </tr>
+
+        <tr data-policy="SSH-03">
+            <td>SSH-03</td>
+            <td>Login SSH di root disabilitato</td>
+            <td class="expected">—</td>
+            <td class="actual">—</td>
+            <td class="policy-status">Non disponibile</td>
+        </tr>
+    </tbody>
+</table>
+
+<p>
+    <small>
+        Modalità DRY RUN: il monitoraggio non applica
+        automaticamente Security Group di quarantena.
+    </small>
+</p>
+
+<script>
+(function () {
+    "use strict";
+
+    const startURL =
+        "{% url 'horizon:project:vm_quarantine:monitor_start' %}";
+    const stopURL =
+        "{% url 'horizon:project:vm_quarantine:monitor_stop' %}";
+    const statusURL =
+        "{% url 'horizon:project:vm_quarantine:monitor_status' %}";
+    const reportURL =
+        "{% url 'horizon:project:vm_quarantine:monitor_report' %}";
+
+    const startButton = document.getElementById("start-monitor");
+    const stopButton = document.getElementById("stop-monitor");
+    const monitorStatus = document.getElementById("monitor-status");
+    const monitorMessage = document.getElementById("monitor-message");
+
+    const vmName = document.getElementById("vm-name");
+    const complianceStatus =
+        document.getElementById("compliance-status");
+    const lastCheck = document.getElementById("last-check");
+    const reportMessage = document.getElementById("report-message");
+
+    const csrfToken = document.querySelector(
+        "#monitor-form input[name='csrfmiddlewaretoken']"
+    ).value;
+
+    let busy = false;
+    let serviceAvailable = false;
+    let monitoringActive = false;
+
+    function updateButtons() {
+        startButton.disabled =
+            busy || !serviceAvailable || monitoringActive;
+        stopButton.disabled =
+            busy || !serviceAvailable || !monitoringActive;
+    }
+
+    async function requestJSON(url, method) {
+        const options = {
+            method: method,
+            credentials: "same-origin",
+            headers: {
+                "Accept": "application/json"
+            },
+            cache: "no-store"
+        };
+
+        if (method === "POST") {
+            options.headers["X-CSRFToken"] = csrfToken;
+        }
+
+        const response = await fetch(url, options);
+        const data = await response.json();
+
+        if (!response.ok || !data.success) {
+            throw new Error(
+                data.message || "Operazione non riuscita"
+            );
+        }
+
+        return data;
+    }
+
+    async function refreshStatus() {
+        try {
+            const data = await requestJSON(statusURL, "GET");
+
+            serviceAvailable = true;
+            monitoringActive = data.status === "active";
+
+            monitorStatus.textContent = monitoringActive
+                ? "ATTIVO"
+                : "DISATTIVATO";
+
+            monitorStatus.style.color = monitoringActive
+                ? "green"
+                : "gray";
+
+        } catch (error) {
+            serviceAvailable = false;
+            monitoringActive = false;
+            monitorStatus.textContent = "Servizio non disponibile";
+            monitorStatus.style.color = "red";
+        }
+
+        updateButtons();
+    }
+
+    function renderPolicy(policyId, data) {
+        const row = document.querySelector(
+            '[data-policy="' + policyId + '"]'
+        );
+
+        if (!row) {
+            return;
+        }
+
+        row.querySelector(".expected").textContent =
+            data ? (data.expected ?? "—") : "—";
+
+        row.querySelector(".actual").textContent =
+            data ? (data.actual ?? "—") : "—";
+
+        const cell = row.querySelector(".policy-status");
+        const status = data ? data.status : "UNKNOWN";
+
+        if (status === "COMPLIANT") {
+            cell.textContent = "COMPLIANT";
+            cell.style.color = "green";
+        } else if (status === "NON_COMPLIANT") {
+            cell.textContent = "NON_COMPLIANT";
+            cell.style.color = "red";
+        } else {
+            cell.textContent = "UNKNOWN";
+            cell.style.color = "orange";
+        }
+    }
+
+    async function refreshReport() {
+        try {
+            const data = await requestJSON(reportURL, "GET");
+            const report = data.report;
+
+            if (!report) {
+                reportMessage.textContent =
+                    "Nessun report disponibile.";
+                return;
+            }
+
+            vmName.textContent = report.vm_name || "Non disponibile";
+
+            complianceStatus.textContent =
+                report.status || "UNKNOWN";
+
+            complianceStatus.style.color =
+                report.status === "COMPLIANT"
+                    ? "green"
+                    : report.status === "NON_COMPLIANT"
+                        ? "red"
+                        : "orange";
+
+            if (report.timestamp) {
+                const date = new Date(report.timestamp);
+
+                lastCheck.textContent = Number.isNaN(date.getTime())
+                    ? "Non disponibile"
+                    : date.toLocaleString("it-IT");
+            }
+
+            const policies = report.policies || {};
+
+            ["SSH-01", "SSH-02", "SSH-02B", "SSH-03"]
+                .forEach(function (policyId) {
+                    renderPolicy(policyId, policies[policyId]);
+                });
+
+            reportMessage.textContent = monitoringActive
+                ? "Ultimo report ricevuto."
+                : "Monitoraggio disattivato: ultimo report storico.";
+
+        } catch (error) {
+            reportMessage.textContent =
+                "Errore durante la lettura del report.";
+        }
+    }
+
+    async function executeAction(url, successMessage) {
+        if (busy) {
+            return;
+        }
+
+        busy = true;
+        monitorMessage.textContent = "";
+        updateButtons();
+
+        try {
+            await requestJSON(url, "POST");
+            monitorMessage.textContent = successMessage;
+        } catch (error) {
+            monitorMessage.textContent =
+                "Errore: " + error.message;
+        } finally {
+            await refreshStatus();
+            await refreshReport();
+            busy = false;
+            updateButtons();
+        }
+    }
+
+    startButton.addEventListener("click", function () {
+        executeAction(
+            startURL,
+            "Richiesta di avvio completata."
+        );
+    });
+
+    stopButton.addEventListener("click", function () {
+        executeAction(
+            stopURL,
+            "Richiesta di arresto completata."
+        );
+    });
+
+    // Il browser legge soltanto stato e report.
+    // Non avvia controlli SSH automaticamente.
+    async function refreshDashboard() {
+        await refreshStatus();
+        await refreshReport();
+    }
+
+    refreshDashboard();
+
+    setInterval(refreshDashboard, 5000);
+})();
+</script>
+
+{% endblock %}
