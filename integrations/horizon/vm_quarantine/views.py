@@ -16,7 +16,7 @@ from django.views.generic import TemplateView
 
 SOCKET_PATH = "/run/vm-quarantine-control/control.sock"
 REPORT_PATH = Path(
-    "/run/vm-quarantine-control/last_report.json"
+    "/var/lib/vm-quarantine-reports/last_report.json"
 )
 
 COMPUTE_PERMISSION = "openstack.services.compute"

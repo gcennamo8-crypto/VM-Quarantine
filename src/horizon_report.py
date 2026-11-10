@@ -5,7 +5,7 @@ from pathlib import Path
 
 
 REPORT_PATH = Path(
-    "/run/vm-quarantine-control/last_report.json"
+    "/var/lib/vm-quarantine-reports/last_report.json"
 )
 
 
