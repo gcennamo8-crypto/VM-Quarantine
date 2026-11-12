@@ -102,7 +102,9 @@ def quarantine(conn, vm_identifier, dry_run=False):
     validate_quarantine_group(conn, group)
     backup_file = get_backup_file(vm.id)
 
-    if backup_file.exists():
+    # Il DRY RUN non richiede l'accesso al backup protetto.
+    # La quarantena reale conserva il controllo di sicurezza.
+    if not dry_run and backup_file.exists():
         raise RuntimeError(
             "Esiste già un backup. "
             "Ripristina prima di applicare una nuova quarantena."
