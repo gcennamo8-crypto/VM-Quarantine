@@ -68,7 +68,7 @@ def fetch_report():
         command,
         capture_output=True,
         text=True,
-        timeout=30,
+        timeout=60,
         check=True,
     )
 
@@ -258,18 +258,25 @@ def execute_quarantine(vm_id, dry_run=True):
     python_executable = BASE_DIR / ".venv" / "bin" / "python"
     quarantine_script = BASE_DIR / "src" / "quarantine.py"
 
-    command = [
-        "sudo",
-        "-n",
-        "--preserve-env=OS_AUTH_TYPE,OS_AUTH_URL,OS_CACERT,"
-        "OS_PASSWORD,OS_PROJECT_DOMAIN_ID,OS_PROJECT_NAME,"
-        "OS_REGION_NAME,OS_USER_DOMAIN_ID,OS_USERNAME",
+    command = []
+
+    # Solo la quarantena reale richiede privilegi amministrativi.
+    if not dry_run:
+        command.extend([
+            "sudo",
+            "-n",
+            "--preserve-env=OS_AUTH_TYPE,OS_AUTH_URL,OS_CACERT,"
+            "OS_PASSWORD,OS_PROJECT_DOMAIN_ID,OS_PROJECT_NAME,"
+            "OS_REGION_NAME,OS_USER_DOMAIN_ID,OS_USERNAME",
+        ])
+
+    command.extend([
         str(python_executable),
         str(quarantine_script),
         "quarantine",
         "--vm",
         vm_id,
-    ]
+    ])
 
     if dry_run:
         command.append("--dry-run")
