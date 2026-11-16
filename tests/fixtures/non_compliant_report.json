@@ -1,0 +1,45 @@
+{
+  "vm_id": "02952f12-af9a-44f5-87a8-15d3412e599e",
+  "vm_name": "vm-security-compliance",
+  "timestamp": "2026-11-16T09:21:56.304392+00:00",
+  "status": "NON_COMPLIANT",
+  "policies": {
+    "SSH-01": {
+      "parameter": "pubkeyauthentication",
+      "expected": "yes",
+      "actual": "yes",
+      "severity": "critical",
+      "status": "COMPLIANT"
+    },
+    "SSH-02": {
+      "parameter": "passwordauthentication",
+      "expected": "no",
+      "actual": "no",
+      "severity": "critical",
+      "status": "COMPLIANT"
+    },
+    "SSH-02B": {
+      "parameter": "kbdinteractiveauthentication",
+      "expected": "no",
+      "actual": "no",
+      "severity": "critical",
+      "status": "COMPLIANT"
+    },
+    "SSH-03": {
+      "parameter": "permitrootlogin",
+      "expected": "no",
+      "actual": "without-password",
+      "severity": "critical",
+      "status": "NON_COMPLIANT"
+    }
+  },
+  "violations": [
+    {
+      "policy_id": "SSH-03",
+      "parameter": "permitrootlogin",
+      "actual": "without-password",
+      "expected": "no",
+      "severity": "critical"
+    }
+  ]
+}
