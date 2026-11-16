@@ -3,6 +3,7 @@ import argparse
 import fcntl
 import json
 import os
+import socket
 import subprocess
 import sys
 from contextlib import contextmanager
@@ -45,6 +46,37 @@ def fetch_report():
 
     if not ssh_auth_sock:
         raise ValueError("SSH Agent non disponibile")
+
+    # Verifica che il percorso sia un socket Unix utilizzabile.
+    sock_path = Path(ssh_auth_sock)
+
+    if not sock_path.is_socket():
+        raise ValueError("Socket SSH Agent inesistente o non valido")
+
+    try:
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as sock:
+            sock.settimeout(2)
+            sock.connect(str(sock_path))
+    except (OSError, TimeoutError) as error:
+        raise ValueError(
+            "Impossibile connettersi all'SSH Agent"
+        ) from error
+
+    # Verifica che l'agent contenga almeno una chiave SSH.
+    result = subprocess.run(
+        ["ssh-add", "-l"],
+        env={**os.environ, "SSH_AUTH_SOCK": ssh_auth_sock},
+        capture_output=True,
+        text=True,
+        timeout=5,
+        check=False,
+    )
+
+    if result.returncode == 1:
+        raise ValueError("SSH Agent senza chiavi caricate")
+
+    if result.returncode != 0:
+        raise ValueError("Impossibile verificare le chiavi SSH")
 
     command = [
         "sudo", "-n",
