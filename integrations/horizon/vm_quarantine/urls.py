@@ -1,6 +1,7 @@
 from django.urls import path
 
 from .views import (
+    quarantined_instances,
     IndexView,
     monitor_start,
     monitor_stop,
@@ -9,6 +10,7 @@ from .views import (
 )
 
 urlpatterns = [
+    path("quarantined/", quarantined_instances, name="quarantined_instances"),
     path("", IndexView.as_view(), name="index"),
     path("start/", monitor_start, name="monitor_start"),
     path("stop/", monitor_stop, name="monitor_stop"),

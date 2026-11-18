@@ -145,3 +145,81 @@ def monitor_report(request):
             "success": False,
             "message": "Impossibile leggere il report",
         }, status=503)
+
+
+@login_required
+@permission_required(COMPUTE_PERMISSION, raise_exception=True)
+@require_GET
+def quarantined_instances(request):
+    """Elenca le VM isolate secondo lo stato reale di Neutron."""
+    from openstack_dashboard import api
+
+    try:
+        groups = api.neutron.security_group_list(request)
+        quarantine_groups = [
+            group for group in groups
+            if group.name == "quarantine-sg"
+        ]
+
+        if len(quarantine_groups) != 1:
+            return JsonResponse({
+                "success": False,
+                "message": "Security Group di quarantena non univoco o assente",
+            }, status=503)
+
+        quarantine_id = quarantine_groups[0].id
+        ports = api.neutron.port_list(request)
+
+        instances = {}
+
+        for port in ports:
+            vm_id = getattr(port, "device_id", None)
+            owner = getattr(port, "device_owner", "") or ""
+
+            if not vm_id or not owner.startswith("compute:"):
+                continue
+
+            security_groups = set(
+                getattr(port, "security_groups", []) or []
+            )
+
+            record = instances.setdefault(vm_id, {
+                "vm_id": vm_id,
+                "ports": [],
+            })
+
+            record["ports"].append({
+                "port_id": port.id,
+                "isolated": security_groups == {quarantine_id},
+            })
+
+        results = []
+
+        for record in instances.values():
+            isolated = [
+                port["isolated"] for port in record["ports"]
+            ]
+
+            if all(isolated):
+                record["status"] = "QUARANTINED"
+            elif any(isolated):
+                record["status"] = "PARTIAL"
+            else:
+                continue
+
+            results.append(record)
+
+        return JsonResponse({
+            "success": True,
+            "instances": results,
+            "count": sum(
+                item["status"] == "QUARANTINED"
+                for item in results
+            ),
+        })
+
+    except Exception:
+        return JsonResponse({
+            "success": False,
+            "message": "Impossibile interrogare Neutron",
+        }, status=503)

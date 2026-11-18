@@ -122,6 +122,36 @@
     </small>
 </p>
 
+
+<hr>
+
+<h3 id="quarantine-list-title">Macchine virtuali in quarantena</h3>
+
+<p>
+    <strong>Numero VM isolate:</strong>
+    <span id="quarantine-count">Caricamento...</span>
+</p>
+
+<p id="quarantine-message" role="status" aria-live="polite">
+    Verifica dello stato Neutron...
+</p>
+
+<table class="table table-striped" id="quarantine-table">
+    <thead>
+        <tr>
+            <th>Macchina virtuale (UUID)</th>
+            <th>Porte Neutron</th>
+            <th>Stato quarantena</th>
+            <th>Azioni</th>
+        </tr>
+    </thead>
+    <tbody id="quarantine-table-body">
+        <tr>
+            <td colspan="4">Caricamento...</td>
+        </tr>
+    </tbody>
+</table>
+
 <script>
 (function () {
     "use strict";
@@ -327,11 +357,77 @@
         );
     });
 
+
+    const quarantinedURL =
+        "{% url 'horizon:project:vm_quarantine:quarantined_instances' %}";
+
+    async function refreshQuarantined() {
+        const tbody = document.getElementById(
+            "quarantine-table-body"
+        );
+        const count = document.getElementById(
+            "quarantine-count"
+        );
+        const message = document.getElementById(
+            "quarantine-message"
+        );
+
+        try {
+            const data = await requestJSON(
+                quarantinedURL, "GET"
+            );
+
+            count.textContent = data.count;
+            tbody.replaceChildren();
+
+            if (!data.instances.length) {
+                const row = tbody.insertRow();
+                const cell = row.insertCell();
+                cell.colSpan = 4;
+                cell.textContent =
+                    "Nessuna macchina virtuale in quarantena.";
+
+                message.textContent =
+                    "Stato Neutron verificato.";
+                return;
+            }
+
+            data.instances.forEach(function (vm) {
+                const row = tbody.insertRow();
+
+                const uuid = row.insertCell();
+                uuid.textContent = vm.vm_id;
+
+                const ports = row.insertCell();
+                ports.textContent = vm.ports.length;
+
+                const status = row.insertCell();
+                status.textContent = vm.status;
+                status.style.color =
+                    vm.status === "QUARANTINED"
+                        ? "red" : "orange";
+
+                const actions = row.insertCell();
+                actions.textContent =
+                    "Ripristino non ancora abilitato";
+            });
+
+            message.textContent =
+                "Elenco aggiornato da OpenStack Neutron.";
+
+        } catch (error) {
+            count.textContent = "—";
+            message.textContent =
+                "Errore durante la lettura dello stato Neutron.";
+        }
+    }
+
     // Il browser legge soltanto stato e report.
     // Non avvia controlli SSH automaticamente.
     async function refreshDashboard() {
         await refreshStatus();
         await refreshReport();
+        await refreshQuarantined();
     }
 
     refreshDashboard();
