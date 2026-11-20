@@ -25,7 +25,7 @@ COMPUTE_PERMISSION = "openstack.services.compute"
 def send_control_command(action):
     """Comunica con il servizio locale VM Quarantine."""
 
-    if action not in ("start", "stop", "status"):
+    if action not in ("start", "stop", "status", "restore"):
         return {
             "success": False,
             "message": "Azione non consentita",
@@ -112,6 +112,30 @@ def monitor_stop(request):
         status=200 if result.get("success") else 503,
     )
 
+
+
+EXPECTED_VM_ID = "02952f12-af9a-44f5-87a8-15d3412e599e"
+
+
+@login_required
+@permission_required(COMPUTE_PERMISSION, raise_exception=True)
+@permission_required("openstack.roles.admin", raise_exception=True)
+@require_POST
+def restore_instance(request):
+    vm_id = request.POST.get("vm_id")
+
+    if vm_id != EXPECTED_VM_ID:
+        return JsonResponse({
+            "success": False,
+            "message": "VM non autorizzata",
+        }, status=403)
+
+    result = send_control_command("restore")
+
+    return JsonResponse(
+        result,
+        status=200 if result.get("success") else 503,
+    )
 
 @login_required
 @permission_required(COMPUTE_PERMISSION, raise_exception=True)

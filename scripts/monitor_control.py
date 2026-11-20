@@ -58,11 +58,36 @@ def handle_request(connection):
 
     action = request.get("action")
 
-    if action not in ("start", "stop", "status"):
+    if action not in ("start", "stop", "status", "restore"):
         raise ValueError("Azione non consentita")
 
     if action == "status":
         result = service_command("is-active")
+
+        mode_result = subprocess.run(
+            [
+                "systemctl", "--user", "show",
+                MONITOR_SERVICE,
+                "-p", "Environment",
+                "--value",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=15,
+            check=True,
+        )
+
+        environment = mode_result.stdout.strip().split()
+        modes = [
+            value.partition("=")[2]
+            for value in environment
+            if value.startswith("VMQ_MODE=")
+        ]
+
+        mode = modes[0] if modes else "dry-run"
+
+        if mode not in ("real", "dry-run"):
+            raise ValueError("Modalita monitor non valida")
 
         response = {
             "success": True,
@@ -71,7 +96,71 @@ def handle_request(connection):
                 if result.returncode == 0
                 else "inactive"
             ),
+            "mode": mode,
         }
+    elif action == "restore":
+        manager = [
+            "sudo", "-n",
+            "/opt/vm-quarantine/run_manager.sh",
+        ]
+
+        before = subprocess.run(
+            manager + ["status"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        )
+
+        if before.returncode != 0:
+            raise RuntimeError("Stato VM non verificabile")
+
+        if "Stato: QUARANTINED" not in before.stdout.splitlines():
+            raise ValueError("VM non in quarantena")
+
+        stopped = service_command("stop")
+
+        if stopped.returncode != 0:
+            raise RuntimeError("Impossibile arrestare il monitor")
+
+        inactive = service_command("is-active")
+
+        if inactive.returncode == 0:
+            raise RuntimeError("Monitor ancora attivo")
+
+        restored = subprocess.run(
+            manager + ["restore"],
+            capture_output=True,
+            text=True,
+            timeout=60,
+            check=False,
+        )
+
+        after = subprocess.run(
+            manager + ["status"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        )
+
+        success = (
+            restored.returncode == 0
+            and after.returncode == 0
+            and "Stato: NOT_QUARANTINED" in after.stdout.splitlines()
+            and "Backup presente: False" in after.stdout.splitlines()
+        )
+
+        response = {
+            "success": success,
+            "action": "restore",
+            "message": (
+                "VM ripristinata correttamente"
+                if success
+                else "Ripristino non confermato: verificare Neutron"
+            ),
+        }
+
     else:
         result = service_command(action)
 
@@ -131,6 +220,7 @@ def main():
                     except (
                         OSError,
                         ValueError,
+                        RuntimeError,
                         PermissionError,
                         json.JSONDecodeError,
                         subprocess.TimeoutExpired,

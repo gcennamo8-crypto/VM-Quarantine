@@ -7,9 +7,11 @@ from .views import (
     monitor_stop,
     monitor_status,
     monitor_report,
+    restore_instance,
 )
 
 urlpatterns = [
+    path("restore/", restore_instance, name="restore_instance"),
     path("quarantined/", quarantined_instances, name="quarantined_instances"),
     path("", IndexView.as_view(), name="index"),
     path("start/", monitor_start, name="monitor_start"),

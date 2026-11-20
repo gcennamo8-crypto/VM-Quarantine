@@ -117,8 +117,7 @@
 
 <p>
     <small>
-        Modalità DRY RUN: il monitoraggio non applica
-        automaticamente Security Group di quarantena.
+        Modalità operativa: <strong id="monitor-mode">Caricamento...</strong>
     </small>
 </p>
 
@@ -164,6 +163,9 @@
         "{% url 'horizon:project:vm_quarantine:monitor_status' %}";
     const reportURL =
         "{% url 'horizon:project:vm_quarantine:monitor_report' %}";
+
+    const restoreURL =
+        "{% url 'horizon:project:vm_quarantine:restore_instance' %}";
 
     const startButton = document.getElementById("start-monitor");
     const stopButton = document.getElementById("stop-monitor");
@@ -222,6 +224,18 @@
             const data = await requestJSON(statusURL, "GET");
 
             serviceAvailable = true;
+
+            const modeLabel = document.getElementById(
+                "monitor-mode"
+            );
+
+            modeLabel.textContent =
+                data.mode === "real" ? "REAL" :
+                data.mode === "dry-run" ? "DRY RUN" :
+                "SCONOSCIUTA";
+
+            modeLabel.style.color =
+                data.mode === "real" ? "red" : "green";
             monitoringActive = data.status === "active";
 
             monitorStatus.textContent = monitoringActive
@@ -408,8 +422,63 @@
                         ? "red" : "orange";
 
                 const actions = row.insertCell();
-                actions.textContent =
-                    "Ripristino non ancora abilitato";
+
+                if (vm.status === "QUARANTINED") {
+                    const button = document.createElement("button");
+                    button.type = "button";
+                    button.className = "btn btn-warning";
+                    button.textContent = "Ripristina VM";
+
+                    button.addEventListener("click", async function () {
+                        if (!window.confirm(
+                            "Ripristinare la VM " + vm.vm_id + "?"
+                        )) {
+                            return;
+                        }
+
+                        button.disabled = true;
+
+                        try {
+                            const body = new URLSearchParams();
+                            body.set("vm_id", vm.vm_id);
+
+                            const response = await fetch(restoreURL, {
+                                method: "POST",
+                                credentials: "same-origin",
+                                headers: {
+                                    "Accept": "application/json",
+                                    "X-CSRFToken": csrfToken,
+                                    "Content-Type":
+                                        "application/x-www-form-urlencoded"
+                                },
+                                body: body.toString()
+                            });
+
+                            const result = await response.json();
+
+                            if (!response.ok || !result.success) {
+                                throw new Error(
+                                    result.message ||
+                                    "Ripristino non riuscito"
+                                );
+                            }
+
+                            message.textContent =
+                                "Ripristino completato.";
+
+                            await refreshDashboard();
+
+                        } catch (error) {
+                            message.textContent =
+                                "Errore ripristino: " + error.message;
+                            button.disabled = false;
+                        }
+                    });
+
+                    actions.appendChild(button);
+                } else {
+                    actions.textContent = "Verifica manuale necessaria";
+                }
             });
 
             message.textContent =

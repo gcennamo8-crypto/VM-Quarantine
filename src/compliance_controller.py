@@ -255,6 +255,12 @@ def check_quarantine_state():
     if vm.id != EXPECTED_VM_ID:
         raise RuntimeError("Identita' OpenStack inattesa")
 
+    if not ports:
+        raise RuntimeError(
+            "Nessuna porta Neutron trovata: "
+            "stato quarantena non verificabile"
+        )
+
     isolated_ports = []
 
     for port in ports:
@@ -278,40 +284,74 @@ def check_quarantine_state():
     return "NOT_QUARANTINED"
 
 
+
+def check_protected_quarantine_state():
+    """Consulta lo stato del gestore root senza modificare Neutron."""
+    result = subprocess.run(
+        [
+            "sudo",
+            "-n",
+            "/opt/vm-quarantine/run_manager.sh",
+            "status",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+
+    statuses = [
+        line.partition(":")[2].strip()
+        for line in result.stdout.splitlines()
+        if line.startswith("Stato:")
+    ]
+
+    if len(statuses) != 1:
+        raise RuntimeError(
+            "Risposta del gestore privilegiato non valida"
+        )
+
+    status = statuses[0]
+
+    if status not in {
+        "NOT_QUARANTINED",
+        "QUARANTINED",
+        "PARTIAL",
+        "INCONSISTENT",
+    }:
+        raise RuntimeError(
+            "Stato del gestore privilegiato sconosciuto"
+        )
+
+    return status
+
+
 def execute_quarantine(vm_id, dry_run=True):
     if vm_id != EXPECTED_VM_ID:
         raise ValueError(
             "Tentativo di quarantena su VM non autorizzata"
         )
 
-    mode = "DRY RUN" if dry_run else "REALE"
-    print(f"\n[OPENSTACK NEUTRON - {mode}]", flush=True)
+    if dry_run:
+        print("\\n[OPENSTACK NEUTRON - DRY RUN]", flush=True)
 
-    python_executable = BASE_DIR / ".venv" / "bin" / "python"
-    quarantine_script = BASE_DIR / "src" / "quarantine.py"
+        command = [
+            str(BASE_DIR / ".venv" / "bin" / "python"),
+            str(BASE_DIR / "src" / "quarantine.py"),
+            "quarantine",
+            "--vm",
+            vm_id,
+            "--dry-run",
+        ]
+    else:
+        print("\\n[OPENSTACK NEUTRON - REALE]", flush=True)
 
-    command = []
-
-    # Solo la quarantena reale richiede privilegi amministrativi.
-    if not dry_run:
-        command.extend([
+        command = [
             "sudo",
             "-n",
-            "--preserve-env=OS_AUTH_TYPE,OS_AUTH_URL,OS_CACERT,"
-            "OS_PASSWORD,OS_PROJECT_DOMAIN_ID,OS_PROJECT_NAME,"
-            "OS_REGION_NAME,OS_USER_DOMAIN_ID,OS_USERNAME",
-        ])
-
-    command.extend([
-        str(python_executable),
-        str(quarantine_script),
-        "quarantine",
-        "--vm",
-        vm_id,
-    ])
-
-    if dry_run:
-        command.append("--dry-run")
+            "/opt/vm-quarantine/run_manager.sh",
+            "quarantine",
+        ]
 
     subprocess.run(
         command,
@@ -476,8 +516,31 @@ def analyze_report(
                 "terminata."
             )
 
-            # quarantine.py invia gia' QUARANTINE_APPLIED.
-            # Evitiamo una seconda email dello stesso evento.
+            # Il gestore protetto non invia email.
+            # Notifichiamo solo dopo il successo di Neutron.
+            message = (
+                "Quarantena reale applicata tramite Neutron.\\n"
+                f"VM UUID: {report['vm_id']}\\n"
+                "Policy critiche violate: "
+                + ", ".join(
+                    violation["policy_id"]
+                    for violation in critical_violations
+                )
+                + "\\nSecurity Group di quarantena applicato."
+            )
+
+            sent = send_notification(
+                event="QUARANTINE_APPLIED",
+                vm_name=report["vm_name"],
+                message=message,
+            )
+
+            if not sent:
+                print(
+                    "[ATTENZIONE] Quarantena applicata, "
+                    "ma notifica email non riuscita."
+                )
+
             return
 
         print(
@@ -545,14 +608,22 @@ def main():
                 "La quarantena reale richiede --fetch"
             )
 
-        if args.apply_quarantine and args.notify:
-            raise ValueError(
-                "Non combinare --apply-quarantine e --notify: "
-                "quarantine.py gestisce gia' le notifiche reali"
-            )
-
         if args.fetch:
+            protected_status = check_protected_quarantine_state()
+
+            if protected_status in {"PARTIAL", "INCONSISTENT"}:
+                raise RuntimeError(
+                    "Stato operativo anomalo: "
+                    + protected_status
+                )
+
             status = check_quarantine_state()
+
+            if status != protected_status:
+                raise RuntimeError(
+                    "Stati Neutron e gestore non coerenti: "
+                    f"{status} / {protected_status}"
+                )
 
             if status == "QUARANTINED":
                 print(
