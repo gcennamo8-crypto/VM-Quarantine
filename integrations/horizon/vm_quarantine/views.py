@@ -36,7 +36,7 @@ def send_control_command(action):
             socket.AF_UNIX,
             socket.SOCK_STREAM,
         ) as client:
-            client.settimeout(5)
+            client.settimeout(180 if action == "restore" else 5)
             client.connect(SOCKET_PATH)
 
             client.sendall(
@@ -203,9 +203,17 @@ def quarantined_instances(request):
             if not vm_id or not owner.startswith("compute:"):
                 continue
 
-            security_groups = set(
-                getattr(port, "security_groups", []) or []
-            )
+            group_ids = getattr(port, "security_group_ids", None)
+
+            if group_ids is None:
+                group_ids = getattr(port, "security_groups", None)
+
+            if group_ids is None:
+                raise ValueError(
+                    "Attributi Security Group assenti nella porta Neutron"
+                )
+
+            security_groups = set(group_ids)
 
             record = instances.setdefault(vm_id, {
                 "vm_id": vm_id,
