@@ -16,9 +16,23 @@ while true; do
     echo "========== NUOVO CONTROLLO =========="
     date -u
 
-    /home/tana/VM-Quarantine/.venv/bin/python \
-        src/compliance_controller.py --fetch --notify || \
-        echo "[VM QUARANTINE] Controllo non riuscito"
+    case "${VMQ_MODE:-dry-run}" in
+        real)
+            /home/tana/VM-Quarantine/.venv/bin/python \
+                src/compliance_controller.py \
+                --fetch --notify --apply-quarantine || \
+                echo "[VM QUARANTINE] Controllo reale non riuscito"
+            ;;
+        dry-run)
+            /home/tana/VM-Quarantine/.venv/bin/python \
+                src/compliance_controller.py --fetch --notify || \
+                echo "[VM QUARANTINE] Controllo DRY RUN non riuscito"
+            ;;
+        *)
+            echo "[VM QUARANTINE] VMQ_MODE non valida" >&2
+            exit 1
+            ;;
+    esac
 
     echo "[VM QUARANTINE] Prossimo controllo dopo 60 secondi"
     sleep 60
