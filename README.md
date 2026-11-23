@@ -2,7 +2,7 @@
 
 VM Quarantine è un progetto universitario di sicurezza cloud sviluppato in Python e integrato con OpenStack.
 
-Il sistema verifica periodicamente la conformità della configurazione SSH di una macchina virtuale Debian, identifica eventuali violazioni delle policy di sicurezza e simula l'isolamento della VM tramite OpenStack Neutron.
+Il sistema verifica periodicamente la conformità della configurazione SSH di una macchina virtuale Debian, identifica eventuali violazioni delle policy di sicurezza e può applicare l'isolamento reale della VM tramite OpenStack Neutron.
 
 ## Architettura
 
@@ -30,7 +30,7 @@ Il progetto utilizza i seguenti componenti:
 2. Il Controller si collega alla VM Debian tramite SSH.
 3. Il Compliance Agent verifica le quattro policy SSH.
 4. Il Controller valida il report ricevuto.
-5. Se rileva violazioni critiche, simula la quarantena tramite Neutron.
+5. Se rileva violazioni critiche, richiede la quarantena tramite Neutron in modalità REAL oppure la simula in DRY RUN.
 6. Il risultato viene salvato e visualizzato su Horizon.
 7. Il controllo viene ripetuto periodicamente fino allo STOP.
 
@@ -46,9 +46,7 @@ Il progetto implementa diverse misure di sicurezza:
 - Prevenzione delle notifiche email duplicate.
 - Monitoraggio disattivato all'avvio del sistema.
 
-**IMPORTANTE:** il monitoraggio automatico opera esclusivamente in DRY RUN.
-
-La quarantena viene simulata: nessun Security Group viene modificato automaticamente.
+**Modalità operative:** il monitoraggio supporta DRY RUN (senza modifiche ai Security Group) e REAL (quarantena effettiva tramite Neutron). La modalità predefinita dello script è DRY RUN. La quarantena reale richiede la configurazione e le autorizzazioni del gestore privilegiato.
 ## Test automatici
 
 Il progetto include una suite di test basata su unittest.
@@ -83,12 +81,12 @@ Repository:
 https://github.com/gcennamo8-crypto/VM-Quarantine
 
 Branch di sviluppo:
-feature/security-compliance
+feature/automatic-quarantine-dashboard
 
 ## Stato del progetto
 
-Il monitoraggio SSH, l'integrazione Horizon, la simulazione Neutron e gli 8 test automatici sono stati verificati.
+Il monitoraggio SSH, la quarantena reale tramite Neutron, il ripristino da Horizon e le notifiche email sono stati verificati mediante un collaudo end-to-end. Sono inoltre presenti 8 test automatici.
 
 Il monitoraggio rimane disattivato all'avvio e viene attivato dall'utente tramite Horizon.
 
-La quarantena automatica è limitata alla modalità DRY RUN.
+La quarantena automatica supporta sia DRY RUN sia REAL. Il ripristino riapplica i Security Group originali salvati prima dell'isolamento.
