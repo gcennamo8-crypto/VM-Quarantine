@@ -79,7 +79,7 @@ def generate_report(results, vm_id=None, vm_name=None):
         "policies": results,
     }
 
-
+# Coordina la verifica delle policy SSH e produce un report JSON o un output testuale.
 def main():
     parser = argparse.ArgumentParser(
         description="VM Quarantine SSH Compliance Agent"
