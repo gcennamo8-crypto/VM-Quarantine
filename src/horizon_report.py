@@ -8,13 +8,9 @@ REPORT_PATH = Path(
     "/var/lib/vm-quarantine-reports/last_report.json"
 )
 
-
+#Riceve e salva il report di sicurezza della VM
 def save_horizon_report(report):
-    """
-    Salva atomicamente l'ultimo report validato.
-
-    Horizon potrà leggere il file, ma non modificarlo.
-    """
+    
 
     data = {
         "vm_id": report["vm_id"],
@@ -26,7 +22,8 @@ def save_horizon_report(report):
     }
 
     directory = REPORT_PATH.parent
-
+    
+#Creazione di un file temporaneo JSON per evitare la lettura di un report incompleto da parte di Horizon
     fd, temporary_path = tempfile.mkstemp(
         prefix=".report-",
         suffix=".json",
@@ -38,9 +35,10 @@ def save_horizon_report(report):
             json.dump(data, file, indent=2)
             file.write("\n")
             file.flush()
+            #Garantisce il salvataggio dei dati sul disco 
             os.fsync(file.fileno())
 
-            # Lettura consentita al gruppo stack
+            #Imposta i permessi per consentire a Horizon la sola lettura.
             os.fchmod(file.fileno(), 0o640)
 
         os.replace(temporary_path, REPORT_PATH)

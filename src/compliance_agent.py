@@ -13,7 +13,7 @@ SSH_PARAMETERS = (
     "permitrootlogin",
 )
 
-
+# Legge la configurazione SSH effettiva della VM e recupera i parametri da verificare
 def read_ssh_configuration():
     result = subprocess.run(
         ["/usr/sbin/sshd", "-T"],
@@ -38,7 +38,7 @@ def read_ssh_configuration():
 
 
 
-
+# Recupera UUID e nome della VM attraverso il servizio metadata di OpenStack.
 def get_vm_identity():
     metadata_url = "http://169.254.169.254/openstack/latest/meta_data.json"
 
@@ -53,7 +53,7 @@ def get_vm_identity():
 
     return vm_id, vm_name
 
-
+# Genera il report di conformità con i risultati delle policy e le eventuali violazioni.
 def generate_report(results, vm_id=None, vm_name=None):
     violations = []
 
@@ -79,7 +79,7 @@ def generate_report(results, vm_id=None, vm_name=None):
         "policies": results,
     }
 
-
+# Coordina la verifica delle policy SSH e produce un report JSON o un output testuale.
 def main():
     parser = argparse.ArgumentParser(
         description="VM Quarantine SSH Compliance Agent"
