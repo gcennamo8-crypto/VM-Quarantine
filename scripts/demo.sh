@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
 # VM Quarantine — dimostrazione guidata per laboratorio OpenStack.
-# Da eseguire sull'host Ubuntu (tana-laptop), NON dentro Debian.
 # Non applica la quarantena direttamente: la applica il monitor in REAL.
 # START, STOP e RESTORE rimangono operazioni da eseguire su Horizon.
 
@@ -196,7 +195,7 @@ introduce_violation() {
   fi
   say "ATTENZIONE: PermitRootLogin yes consentira' il login root tramite SSH, se esistono credenziali adatte."
   say "Questa prova va svolta solo nella VM di laboratorio; la quarantena interrompera' SSH."
-  confirm_word 'CONSOLE' 'Hai verificato che la console della Debian sia accessibile su Horizon?' || return 1
+  confirm_word 'VERIFICATO' 'Hai verificato la connessione Debian sia funzionante?' || return 1
   confirm_word 'VIOLA' 'Confermi la violazione temporanea SSH-03?' || return 1
   change_guest_policy 'no' 'yes' || return 1
   say 'Violazione introdotta. Non fermare il monitor: al controllo successivo dovrebbe isolare la VM.'
